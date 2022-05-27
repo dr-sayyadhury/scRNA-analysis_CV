@@ -1,0 +1,437 @@
+# ---
+#   title: "Untitled"
+# output: html_document
+# date: '2022-05-06'
+# ---
+#   
+#   ```{r setup, include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+# ```
+
+
+# Packages
+# ```{r packages, include=FALSE}
+
+library(dplyr)
+library(Seurat)
+library(ggplot2)
+# library(colorspace)
+library(STACAS)
+library(clustree)
+library(gridExtra)
+library(ggpubr)
+#library(egg)
+#library(scales)
+library(scran)
+library(effectsize)
+
+#```
+
+###--------------- DATA LOADING -------------------- ###
+# ```{r read.data, include=FALSE}
+counts <- read.csv('/home/cvolk/projects/def-gbader/cvolk/single_cell_dataset/SCRNA/single_cell_dataset/SCP503/other/Richards_NatureCancer_GBM_scRNAseq_counts.csv',
+                   header = TRUE,
+                   row.names = 1,
+                   sep = ",")
+
+colnames(counts) <- gsub(x = colnames(counts),
+                         pattern = "\\.",
+                         replacement = "-")
+
+meta <- read.csv('/home/cvolk/projects/def-gbader/cvolk/single_cell_dataset/SCRNA/datasets/SCP503/other/Richards_NatureCancer_GBM_scRNAseq_meta.csv',
+                 header = TRUE,
+                 row.names = 1,
+                 sep = ",")
+
+all(rownames(meta)==colnames(counts))
+
+# ```
+
+### SEURAT PIPELINE ###
+# ```{r seurat.obj, include=TRUE}
+GBM <- CreateSeuratObject(counts = counts,
+                          project = "GBM",
+                          meta.data = meta)
+
+GBM[["ribo"]] <- PercentageFeatureSet(GBM, pattern = "^RP[SL]")
+GBM[["mito"]] <- PercentageFeatureSet(GBM, pattern = "^MT-")
+
+saveRDS(GBM, "~/Desktop/SCRNA/outputs/GBM.rds")
+# ```
+### SAMPLE LISTS ###
+# ```{r }
+#red_list <- list()
+GBM <- readRDS("/home/cvolk/projects/def-gbader/cvolk/single_cell_dataset/SCRNA/GBM_output.rds")
+red_list <- c( 'G1003-A_T', 'G1003-B_T', 'G1003-C_T')
+
+GBMr <- subset(GBM, subset=orig.ident %in% red_list)
+rm(GBM)
+sample.list <- SplitObject(GBMr, split.by = "orig.ident")
+sce.list <- lapply(sample.list, as.SingleCellExperiment)
+
+# ```
+
+### PLOTTING ###
+# ```{r plots.QC, fig.height=4, fig.width=9}
+ggplot(GBMr[[]], aes(nCount_RNA, mito, color=ribo)) +
+  geom_jitter(size=0.3) +
+  theme_pubr() +
+  #scale_y_log10() +
+  scale_x_log10() +
+  scale_color_continuous_sequential(palette='ag_Sunset', rev=T) 
+# facet_wrap(~orig.ident, nrow=2)
+
+ggplot(GBMr[[]], aes(nGene, mito, color=PatientID)) +
+  geom_jitter(size=0.3) +
+  theme_pubr() +
+  #scale_y_log10() +
+  scale_x_log10() +
+  #scale_color_continuous_sequential(palette='ag_Sunset', rev=T) +
+  facet_wrap(~orig.ident, nrow=2)
+
+ggplot(GBMr[[]], aes(nCount_RNA, nGene, color=ribo)) +
+  geom_jitter(size=0.3) +
+  theme_pubr() +
+  scale_y_log10() +
+  scale_x_log10() +
+  scale_color_continuous_sequential(palette='ag_Sunset', rev=T)
+
+ggplot(GBMr[[]], aes(nCount_RNA, nGene, color=mito)) +
+  geom_jitter(size=0.3) +
+  theme_pubr() +
+  scale_y_log10() +
+  scale_x_log10() +
+  scale_color_continuous_sequential(palette='ag_Sunset', rev=T)
+
+ggplot(GBMr[[]], aes(nCount_RNA, nGene, color=orig.ident)) +
+  geom_jitter(size=0.3) +
+  theme_pubr() +
+  scale_y_log10() +
+  scale_x_log10() 
+
+ggplot(GBMr[[]], aes(nCount_RNA, nGene, color=nGene<200)) +
+  geom_jitter(size=0.3) +
+  theme_pubr() +
+  scale_y_log10() +
+  scale_x_log10() 
+
+# ```
+
+### INITIAL INTEGRATION ###
+# ``` {r integration, include=TRUE}
+
+for (i in 1:length(sample.list)) {
+  sample.list[[i]] <- SCTransform(sample.list[[i]])
+  #sample.list[[i]] <- NormalizeData(sample.list[[i]]) %>% FindVariableFeatures(., selection.method = 'vst', nfeatures=3000) %>% ScaleData(.)
+  #clust <- quickCluster(sce.list[[i]])
+  #sce <- computeSumFactors(sce.list[[i]], cluster=clust, min.mean=0.1)
+  #sce <- scater::logNormCounts(sce)
+  #sample.list[[i]] <- CreateAssayObject(data=sce@assays@data$logcounts)
+}
+# ```
+# 
+# ### MERGING ###
+# ```{r, include=F }
+
+m <- sample.list[[1]]
+for (i in 2:length(sample.list)){
+  m <- merge(m, sample.list[[i]])
+}
+# ```
+# 
+# ### CLUSTERING ###
+# ```{r, include=F }
+
+m <- SCTransform(m)
+m <- RunPCA (m)
+m <- RunUMAP(m, 
+             dims=1:30,
+             n.neighbors = 10)
+
+m <- FindNeighbors(m, 
+                   reduction ="pca")
+
+m  <- FindClusters(m)
+
+# ```
+# ### PLOT CLUSTERS ###
+# ```{r }
+
+DimPlot(m, 
+        group.by='SampleID')
+FeaturePlot(m, features=c('PTPRC', 'CD24', 'FAM107A', 'HLA-A'), order=T)
+DimPlot(m, 
+        group.by='seurat_clusters', label=T)
+
+
+# ```
+# 
+# ### subsettting out immune cells and cancr cells
+# ```{r }
+`%ni%` <- Negate(`%in%`)
+immune <- subset(m, subset=seurat_clusters  %in% c(0,7))
+tumor <- subset(m, subset=seurat_clusters  %ni% c(0,7))
+FeaturePlot(immune, features=c('PTPRC', 'CD24', 'FAM107A', 'HLA-A'), order=T)
+FeaturePlot(tumor, features=c('PTPRC', 'CD24', 'FAM107A', 'HLA-A'), order=T)
+DimPlot(immune, 
+        group.by='seurat_clusters', label=T)
+DimPlot(tumor, 
+        group.by='seurat_clusters', label=T)
+
+# ```
+# ### split sample/sce list into tumour & immune cells ### 
+# ```{r split, include=F}
+sample.list.immune <- SplitObject(immune, split.by = "orig.ident")
+sce.list.immune <- lapply(sample.list.immune, as.SingleCellExperiment)
+
+sample.list.tumor <- SplitObject(tumor, split.by = "orig.ident")
+sce.list.tumor <- lapply(sample.list.tumor, as.SingleCellExperiment)
+
+# ```
+# 
+# ### transform again - immune & tumour cells ###
+# ```{r transform, include=F}
+for (i in 1:length(sample.list.immune)) {
+  sample.list.immune[[i]] <- SCTransform(sample.list.immune[[i]])
+  #sample.list[[i]] <- NormalizeData(sample.list[[i]]) %>% FindVariableFeatures(., selection.method = 'vst', nfeatures=3000) %>% ScaleData(.)
+  #clust <- quickCluster(sce.list[[i]])
+  #sce <- computeSumFactors(sce.list[[i]], cluster=clust, min.mean=0.1)
+  #sce <- scater::logNormCounts(sce)
+  #sample.list[[i]] <- CreateAssayObject(data=sce@assays@data$logcounts)
+}
+for (i in 1:length(sample.list.tumor)) {
+  sample.list.tumor[[i]] <- SCTransform(sample.list.tumor[[i]])
+}
+# ```
+# 
+# ### merge tumour & immune ### 
+# ```{r merge, include=F }
+
+m.immune <- sample.list.immune[[1]]
+for (i in 2:length(sample.list.immune)){
+  m.immune <- merge(m, sample.list.immune[[i]])
+}
+
+m.tumor <- sample.list.tumor[[1]]
+for (i in 2:length(sample.list.tumor)){
+  m.tumor <- merge(m, sample.list.tumor[[i]])
+}
+# ```
+# 
+# ### transform merged lists ###
+# ```{r, include=F }
+
+m.immune <- SCTransform(m.immune)
+m.tumor <- SCTransform(m.tumor)
+
+m.immune <- RunPCA (m.immune)
+m.tumor <- RunPCA(m.tumor)
+
+m.immune <- RunUMAP(m.immune, 
+                    dims=1:30,
+                    n.neighbors = 10)
+m.tumor <- RunUMAP(m.tumor, 
+                   dims=1:30,
+                   n.neighbors = 10)
+
+m.immune <- FindNeighbors(m.immune, 
+                          reduction ="pca")
+m.tumor <- FindNeighbors(m.tumor, 
+                         reduction ="pca")
+
+m.immune <- FindClusters(m.immune)
+m.tumor <- FindClusters(m.tumor)
+
+# ```
+# 
+# ### Plotting reclustered immune & tumor###
+# ```{r plot}
+
+DimPlot(m.immune, 
+        group.by='SampleID')
+FeaturePlot(m.immune, features=c('PTPRC', 'CD24', 'ITGAM', 'HLA-A'), order=T)
+DimPlot(m.immune, 
+        group.by='seurat_clusters', label=T)
+
+DimPlot(m.tumor, 
+        group.by='SampleID')
+FeaturePlot(m.tumor, features=c('PTPRC', 'CD24', 'ITGAM', 'HLA-A'), order=T)
+DimPlot(m.tumor, 
+        group.by='seurat_clusters', label=T)
+
+
+# ```
+# ### RE-SUBSET CELLS ###
+# ```{r }
+`%ni%` <- Negate(`%in%`)
+immune1 <- subset(m.immune, subset=seurat_clusters  %ni% c(6)) # everything except cluster 6 from prev. clustered immune cells
+immune2 <- subset(m.tumor, subset=seurat_clusters %in% c(0,10)) # cluster 0 & 10 from prev. clustered tumor cells
+#immune <- merge(immune1, immune2)
+
+tumor1 <- subset(m.immune, subset=seurat_clusters  %in% c(6)) # cluster 6 from prev. clustered immune cells
+tumor2 <- subset(m.tumor, subset=seurat_clusters %ni% c(0, 10)) # everything except cluster 0 & 10 from prev. clustered tumor cells
+#tumor <- merge(tumor1, tumor2)
+
+
+FeaturePlot(immune1, features=c('PTPRC', 'CD24', 'FAM107A', 'HLA-A'), order=T)
+FeaturePlot(immune2, features=c('PTPRC', 'CD24', 'FAM107A', 'HLA-A'), order=T)
+FeaturePlot(tumor1, features=c('PTPRC', 'CD24', 'FAM107A', 'HLA-A'), order=T)
+FeaturePlot(tumor2, features=c('PTPRC', 'CD24', 'FAM107A', 'HLA-A'), order=T)
+DimPlot(immune1, 
+        group.by='seurat_clusters', label=T)
+DimPlot(immune2, 
+        group.by='seurat_clusters', label=T)
+DimPlot(tumor1, 
+        group.by='seurat_clusters', label=T)
+DimPlot(tumor2, 
+        group.by='seurat_clusters', label=T)
+
+# ```
+# ### MERGE ###
+# ```{r merge. include=F}
+m.immune <- merge(immune1, immune2)
+m.tumor <- merge(tumor1, tumor2)
+# ```
+# 
+# ### transform merged lists ###
+# ```{r, include=F }
+
+m.immune <- SCTransform(m.immune)
+m.tumor <- SCTransform(m.tumor)
+
+m.immune <- RunPCA (m.immune)
+m.tumor <- RunPCA(m.tumor)
+
+m.immune <- RunUMAP(m.immune, 
+                    dims=1:30,
+                    n.neighbors = 10)
+m.tumor <- RunUMAP(m.tumor, 
+                   dims=1:30,
+                   n.neighbors = 10)
+
+m.immune <- FindNeighbors(m.immune, 
+                          reduction ="pca")
+m.tumor <- FindNeighbors(m.tumor, 
+                         reduction ="pca")
+# ```
+# ### cluster ###
+# ```{r cluster}
+# m.immune <- FindClusters(m.immune, resolution = 0.2)
+# m.tumor <- FindClusters(m.tumor, resolution = 0.8)
+# 
+# ```
+
+### Plotting reclustered immune & tumor###
+# ```{r plot}
+
+DimPlot(m.immune, 
+        group.by='SampleID')
+FeaturePlot(m.immune, features=c('PTPRC', 'CD24', 'FAM107A', 'HLA-A', 'PECAM1'), order=T)
+DimPlot(m.immune, 
+        group.by='seurat_clusters', label=T)
+
+DimPlot(m.tumor, 
+        group.by='SampleID')
+FeaturePlot(m.tumor, features=c('PTPRC', 'CD24', 'FAM107A', 'HLA-A', 'PECAM1'), order=T)
+DimPlot(m.tumor, 
+        group.by='seurat_clusters', label=T)
+# ```
+# ### Continue with STACAS integration
+# 
+# ```{r STACAS, fig.width=24, fig.height=12, include=F}
+# 
+# features <- SelectIntegrationFeatures(object.list=sample.list, 
+#                                       nfeatures=900)
+# 
+# sample.list <- PrepSCTIntegration(object.list=sample.list, 
+#                                   anchor.features = features)
+# 
+# stacas.anchors <- FindAnchors.STACAS(sample.list, 
+#                                      anchor.features =features, 
+#                                      normalization.method = "SCT")
+# 
+# names<- names(sample.list)
+# plots <- PlotAnchors.STACAS(stacas.anchors, obj.names = names)
+# ```
+# 
+# ```{r plot, fig.width = 24, fig.height=12}
+# g <- do.call("arrangeGrob", c(plots))
+# plot(g)
+# 
+# stacas.anchors.filtered <- FilterAnchors.STACAS(stacas.anchors, dist.thr = 0.75)
+# ```
+# 
+# 
+# 
+# ```{r }
+# mySampleTree <- SampleTree.STACAS(stacas.anchors.filtered)
+# 
+# stacas.int <- IntegrateData(anchorset = stacas.anchors.filtered, 
+#                             k.weight = 14, 
+#                             normalization.method = "SCT",
+#                             dims = 1:10, 
+#                             sample.tree = mySampleTree, 
+#                             preserve.order = T)
+# 
+# ```
+# 
+# ``` {r pc.analysis, include=TRUE}
+# 
+# ## Reductions - PCA, UMAP, tSNE
+# DefaultAssay(stacas.int) <- 'integrated'
+# stacas.int <- RunPCA(stacas.int, verbose=FALSE)
+# 
+# # Determine percent of variation associated with each PC
+# pct <- stacas.int[["pca"]]@stdev / sum(stacas.int[["pca"]]@stdev) * 100
+# 
+# # Calculate cumulative percents for each PC
+# cumu <- cumsum(pct)
+# 
+# # Determine which PC exhibits cumulative percent greater than 90% and % variation associated with the PC as less than 5
+# co1 <- which(cumu > 90 & pct < 5)[1]
+# 
+# # Determine the difference between variation of PC and subsequent PC
+# 
+# co2 <- sort(which((pct[1:length(pct) - 1] - pct[2:length(pct)]) > 0.1), decreasing = T)[1] + 1
+# 
+# stacas.int <- RunUMAP(stacas.int, 
+#                       dims=1:co2,
+#                       n.neighbors = 10,
+#                       spread = 0.3,
+#                       min.dist=0.001)
+# 
+# ```
+# 
+# ``` {r cluster, include=TRUE, fig.height=12, fig.width=24}
+# 
+# ### Clustering using seurat
+# stacas.int <- FindNeighbors(stacas.int, 
+#                             reduction ="pca", 
+#                             dims=1:co2)
+# 
+# for (r in seq(0,0.9,0.1)){
+#   stacas.int  <- FindClusters(stacas.int , resolution=r)
+# }
+# 
+# #Plot clustree
+# clustree::clustree(stacas.int, prefix="integrated_snn_res.") + 
+#   ggtitle("Clustering tree (data.int)")
+# 
+# plots <- list()
+# for (res in seq(0,0.9, 0.1)) 
+#   plots[[as.character(res)]] <- DimPlot(stacas.int, pt.size = 0.5,
+#                                         label=T, repel=T,
+#                                         group.by = paste0("integrated_snn_res.", res)) + 
+#   ggtitle(paste("res=", res)) + theme(legend.position = "none")
+# 
+# cowplot::plot_grid(plotlist=plots)
+# 
+# #saveRDS(stacas.int, "~/Desktop/SCRNA/outputs/stacas.int_SCT_14scSamples.rds")
+# 
+# ```
+# ```{r, fig.width=12, fig.height=6}
+# 
+# DefaultAssay(stacas.int) <- 'SCT'
+# DimPlot(stacas.int, reduction="umap", group.by = "integrated_snn_res.0.5")
+# FeaturePlot(stacas.int, features=c('PTPRC','CD3','CD4', 'CD8A', 'CD11B', 'CD68', 'CD44', 'CD24'), order=T)
+# ```
