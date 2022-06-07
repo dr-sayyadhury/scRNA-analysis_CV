@@ -11,9 +11,14 @@ library(ggpubr)
 #library(scales)
 library(scran)
 #library(effectsize)
+library(reticulate)
+library(sceasy)
 
-# ```
-# 
+#scanorama <- import('scanorama') 
+
+sc <- import("scanpy", convert=FALSE)
+scvi <- import("scvi", convert=FALSE)
+
 
 filepath <- '~/projects/def-gbader/cvolk/'
 
@@ -93,12 +98,12 @@ print("before d1 d2")
 #d1+d2
 #ggpubr::ggarrange(d1,d2, ncol=2)
 
-d1 <- DimPlot(sample.list[[1]],
-        group.by='SampleID')
-d2 <- DimPlot(sample.list[[1]],
-        group.by='SampleID')
+#d1 <- DimPlot(sample.list[[1]],
+#        group.by='SampleID')
+#d2 <- DimPlot(sample.list[[1]],
+#        group.by='SampleID')
 
-ggpubr::ggarrange(d1,d2, ncol=2)
+#ggpubr::ggarrange(d1,d2, ncol=2)
 
 #FeaturePlot(sce.list[[1]], features=c('CD3D', 'CD4', 'CD8A', 'CD44', 'CD68', 'ITGAM', 'CD274', 'CD28', 'PDCD1'), order=T)
 #DimPlot(sce.list[[1]],
@@ -114,18 +119,32 @@ for (i in 1:length(sample.list)){
 print("default RNA")
 #saveRDS(sce.list, file=paste(filepath,'outputs/sample_list.RDS',sep=""))
 
-integ.features <- SelectIntegrationFeatures(object.list = sample.list, nfeatures=3000)
-m.immune <- lapply(X=sample.list, FUN=function(x) {
-	x <- ScaleData(x, features=integ.features, verbose=FALSE)
-	x <- RunPCA(x, features=integ.features, verbose=FALSE, npcs=30)
-})
+####### INTEGRATION #######
+
+adata <- convertFormat(sample.list, from="seurat", to="anndata", main_layer="counts", drop_single_values=FALSE)
+print(adata)
+
+scvi$model$SCVI$setup_anndata(adata)
+model=scvi$model$SCVI(adata)
+model$train
+
+latent=model$get_latent_representation()
+latent <- as.matrix(latent)
+rownames(latent) = colnames(sample.list)
+sample.list[["scvi"]] <- CreateDimReducObject(embeddings=latent, key="scvi_", assay=DefaultAssay(sample.list))
+
+#integ.features <- SelectIntegrationFeatures(object.list = sample.list, nfeatures=3000)
+#m.immune <- lapply(X=sample.list, FUN=function(x) {
+#	x <- ScaleData(x, features=integ.features, verbose=FALSE)
+#	x <- RunPCA(x, features=integ.features, verbose=FALSE, npcs=30)
+#})
 #m.immune <- PrepSCTIntegration(object.list = sample.list, anchor.features = integ.features)
-integ.anchors <- FindIntegrationAnchors(object.list = m.immune, anchor.features = integ.features, reduction="rpca")
-merge.immune <- IntegrateData(anchorset = integ.anchors, k.weight=30)
+#integ.anchors <- FindIntegrationAnchors(object.list = m.immune, anchor.features = integ.features, reduction="rpca")
+#merge.immune <- IntegrateData(anchorset = integ.anchors, k.weight=30)
 
 print("after integration")
 
-DefaultAssay(merge.immune) <- "integrated"
+#DefaultAssay(merge.immune) <- "integrated"
 ### Visualization of integrated data ###
 
 #merge.immune <- integ.immune[[1]]
@@ -133,9 +152,12 @@ DefaultAssay(merge.immune) <- "integrated"
 #  merge.immune <- merge(merge.immune, integ.immune[[i]])
 #}
 
-merge.immune <- ScaleData(merge.immune, verbose=FALSE)
+merge.immune <- ScaleData(sample.list, verbose=FALSE)
 merge.immune <- RunPCA(merge.immune, npcs=30, verbose=FALSE)
 merge.immune <- RunUMAP(merge.immune, dims=1:30, reduction="pca")
+
+merge.immune <- FindNeighbors(merge.immune, reduction="pca", dims=1:30)
+merge.immune <- FindClusters(merge.immune, resolution=0.2)
 
 print("before dimplot")
 
@@ -145,16 +167,6 @@ FeaturePlot(merge.immune, features=c('CD3D', 'CD4', 'CD8A', 'CD44', 'CD68', 'ITG
 DimPlot(merge.immune,
         group.by='seurat_clusters', label=T)
 
-merge.immune <- FindNeighbors(merge.immune, reduction="pca", dims=1:30)
-merge.immune <- FindClusters(merge.immune, resolution=0.2)
-
-print("before second dimplot")
-
-DimPlot(merge.immune,
-        group.by='SampleID')
-FeaturePlot(merge.immune, features=c('CD3D', 'CD4', 'CD8A', 'CD44', 'CD68', 'ITGAM', 'CD274', 'CD28', 'PDCD1'), order=T)
-DimPlot(merge.immune,
-        group.by='seurat_clusters', label=T)
 dev.off()
 
 saveRDS(merge.immune, file=paste(filepath,'outputs/integ_immune.RDS',sep=""))
