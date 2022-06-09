@@ -21,5 +21,5 @@ module load gridExtra/2.3
 module load ggpubr/0.4.0
 module load scran/1.22.1
 
-Rscript ~/projects/def-gbader/cvolk/scripts/immuneAnalysis.R
+Rscript ~/projects/def-gbader/cvolk/scripts/scvi.R
 #Rscript ~/test.R

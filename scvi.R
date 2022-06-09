@@ -64,15 +64,15 @@ for (i in 1:length(sce.list)) {
   sce.list[[i]] <- computeSumFactors(sce.list[[i]], clusters=clusters)
   summary(sizeFactors(sce.list[[i]]))
   sce.list[[i]] <- logNormCounts(sce.list[[i]])
-  print("norm counts")
+#  print("norm counts")
  # DefaultAssay(sce.list[[i]]) <- "SCT"
  # print("default SCT")
   sample.list[[i]] <- SCTransform(sample.list[[i]])
-  print("SCTransform")
+#  print("SCTransform")
   sample.list[[i]] <- RunPCA(sample.list[[i]], npcs=30)
-  print("pca")
+#  print("pca")
   sample.list[[i]] <- RunUMAP(sample.list[[i]], dims=1:30)
-  print("umap") 
+#  print("umap") 
   #sce.list[[i]] <- SCTransform(sce.list[[i]])
   #sample.list[[i]] <- CreateAssayObject(data=sce@assays@data$logcounts)
   #sce.list[[i]] <- logNormCounts(sce.list[[i]])
@@ -94,7 +94,7 @@ print("before plots")
 #sce.list <- lapply(sce.list, FUN=RunPCA)
 #sce.list <- lapply(sce.list, FUN=RunUMAP)
 
-print("before d1 d2")
+#print("before d1 d2")
 
 #d1 <- DimPlot(sce.list[[1]],
 #        group.by='SampleID')
@@ -126,12 +126,34 @@ print("default RNA")
 
 ####### INTEGRATION #######
 
-adata <- convertFormat(sample.list, from="seurat", to="anndata", main_layer="counts", drop_single_values=FALSE)
+#samples.seurat <- as.Seurat(sample.list)
+
+print(sample.list[[1]])
+
+adata.list <- lapply(X=sample.list, FUN=function(x){
+#	x <- as.Seurat(x)
+	x <- convertFormat(x, from="seurat", to="anndata", main_layer="counts", drop_single_values=FALSE)
+})
+print(adata.list[[1]])
+
+#print(scvi$data)
+
+adata <- adata.list[[i]]
+for (i in 2:length(adata.list)){
+	adata <- adata.concatenate(adata, adata.list[[i]], join="outer")
+}
+#adata <- concat(*adata.list)
+
 print(adata)
 
-scvi$model$SCVI$setup_anndata(adata)
+print("finished concat")
+
+scvi$model$SCVI$setup_anndata(adata, batch_key='orig.ident')
+print("setup anndata")
 model=scvi$model$SCVI(adata)
-model$train
+model$train()
+
+print("model trained")
 
 latent=model$get_latent_representation()
 latent <- as.matrix(latent)
@@ -157,12 +179,15 @@ print("after integration")
 #  merge.immune <- merge(merge.immune, integ.immune[[i]])
 #}
 
-merge.immune <- ScaleData(sample.list, verbose=FALSE)
-merge.immune <- RunPCA(merge.immune, npcs=30, verbose=FALSE)
-merge.immune <- RunUMAP(merge.immune, dims=1:30, reduction="pca")
+#merge.immune <- ScaleData(sample.list, verbose=FALSE)
+#merge.immune <- RunPCA(merge.immune, npcs=30, verbose=FALSE)
+#merge.immune <- RunUMAP(merge.immune, dims=1:30, reduction="pca")
 
-merge.immune <- FindNeighbors(merge.immune, reduction="pca", dims=1:30)
-merge.immune <- FindClusters(merge.immune, resolution=0.2)
+sample.list <- FindNeighbors(sample.list, reduction="scvi", dims=1:30)
+sample.list <- FindClusters(sample.list, resolution=0.2)
+sample.list <- RunUMAP(sample.list, dims=1:30, reduction="scvi", n.components=2)
+
+merge.immune <- sample.list
 
 print("before dimplot")
 

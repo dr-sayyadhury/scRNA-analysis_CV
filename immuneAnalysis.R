@@ -58,10 +58,11 @@ integ.immune <- IntegrateData(anchorset = integ.anchors, normalization.method = 
 
 ### Visualization of integrated data ###
 
-merge.immune <- integ.immune[[1]]
-for (i in 2:length(integ.immune)){
-  merge.immune <- merge(merge.immune, integ.immune[[i]])
-}
+#merge.immune <- integ.immune[[1]]
+#for (i in 2:length(integ.immune)){
+#  merge.immune <- merge(merge.immune, integ.immune[[i]])
+#}
+merge.immune <- integ.immune
 
 merge.immune <- RunPCA(merge.immune)
 merge.immune <- RunUMAP(merge.immune, dims=1:30, n.neighbours=10, reduction="pca")
@@ -71,3 +72,4 @@ DimPlot(merge.immune,
 
 dev.off()
 
+saveRDS(merge.immune, file=paste(filepath,'outputs/integ_immune.RDS',sep=""))
