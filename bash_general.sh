@@ -1,6 +1,6 @@
 #!/bin/bash
 #File:
-#SBATCH -t 0-4:00:00                       # <-- walltime in format of days-hours:minutes:sec
+#SBATCH -t 0-02:00:00                       # <-- walltime in format of days-hours:minutes:sec
 #SBATCH --account=def-gbader                  # <-- computecanada account
 #SBATCH --mem-per-cpu=120G                   # <-- memory
 #SBATCH -J scRNA_outfile                 # <-- name of job
@@ -21,5 +21,5 @@ module load gridExtra/2.3
 module load ggpubr/0.4.0
 module load scran/1.22.1
 
-Rscript ~/projects/def-gbader/cvolk/scripts/scvi.R
+Rscript ~/projects/def-gbader/cvolk/scripts/scvi_after_integration.R
 #Rscript ~/test.R

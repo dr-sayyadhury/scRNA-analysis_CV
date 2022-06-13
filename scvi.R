@@ -31,7 +31,7 @@ m.immune <- readRDS(file=paste(filepath,'outputs/m_immune.RDS',sep=""))
 
 ### Initial cluster visualization ###
 
-pdf(file=paste(filepath,'outputs/immune_plots_scran.pdf',sep=""), width=15, height=9)
+pdf(file=paste(filepath,'outputs/immune_plots_scvi.pdf',sep=""), width=15, height=9)
 
 DimPlot(m.immune,
         group.by='SampleID')
@@ -60,10 +60,10 @@ sce.list <- lapply(sample.list, as.SingleCellExperiment)
 #sce.list <- sample.list
 
 for (i in 1:length(sce.list)) {
-  clusters <- quickCluster(sce.list[[i]], min.size=40)
-  sce.list[[i]] <- computeSumFactors(sce.list[[i]], clusters=clusters)
-  summary(sizeFactors(sce.list[[i]]))
-  sce.list[[i]] <- logNormCounts(sce.list[[i]])
+#  clusters <- quickCluster(sce.list[[i]], min.size=40)
+#  sce.list[[i]] <- computeSumFactors(sce.list[[i]], clusters=clusters)
+#  summary(sizeFactors(sce.list[[i]]))
+#  sce.list[[i]] <- logNormCounts(sce.list[[i]])
 #  print("norm counts")
  # DefaultAssay(sce.list[[i]]) <- "SCT"
  # print("default SCT")
@@ -130,64 +130,50 @@ print("default RNA")
 
 print(sample.list[[1]])
 
-adata.list <- lapply(X=sample.list, FUN=function(x){
-#	x <- as.Seurat(x)
-	x <- convertFormat(x, from="seurat", to="anndata", main_layer="counts", drop_single_values=FALSE)
-})
-print(adata.list[[1]])
+samples <- sample.list[[1]]
+for (i in 2:length(sample.list)){
+	samples <- merge(samples, sample.list[[i]])
+}
+
+print("finished merge")
+
+adata <- convertFormat(samples, from="seurat", to="anndata", main_layer="counts", drop_single_values=FALSE)
 
 #print(scvi$data)
 
-adata <- adata.list[[i]]
-for (i in 2:length(adata.list)){
-	adata <- adata.concatenate(adata, adata.list[[i]], join="outer")
-}
+#adata <- adata.list[[i]]
+#for (i in 2:length(adata.list)){
+#	adata <- merge(adata, adata.list[[i]])
+#}
 #adata <- concat(*adata.list)
 
 print(adata)
 
-print("finished concat")
+print("finished convert")
 
+print("starting integration...")
 scvi$model$SCVI$setup_anndata(adata, batch_key='orig.ident')
 print("setup anndata")
 model=scvi$model$SCVI(adata)
 model$train()
 
 print("model trained")
+saveRDS(adata, file=paste(filepath,'outputs/scvi_adata.RDS',sep=""))
+saveRDS(model, file=paste(filepath,'outputs/scvi_model.RDS',sep=""))
 
 latent=model$get_latent_representation()
 latent <- as.matrix(latent)
-rownames(latent) = colnames(sample.list)
-sample.list[["scvi"]] <- CreateDimReducObject(embeddings=latent, key="scvi_", assay=DefaultAssay(sample.list))
-
-#integ.features <- SelectIntegrationFeatures(object.list = sample.list, nfeatures=3000)
-#m.immune <- lapply(X=sample.list, FUN=function(x) {
-#	x <- ScaleData(x, features=integ.features, verbose=FALSE)
-#	x <- RunPCA(x, features=integ.features, verbose=FALSE, npcs=30)
-#})
-#m.immune <- PrepSCTIntegration(object.list = sample.list, anchor.features = integ.features)
-#integ.anchors <- FindIntegrationAnchors(object.list = m.immune, anchor.features = integ.features, reduction="rpca")
-#merge.immune <- IntegrateData(anchorset = integ.anchors, k.weight=30)
+rownames(latent) = colnames(samples)
+samples[["scvi"]] <- CreateDimReducObject(embeddings=latent, key="scvi_", assay=DefaultAssay(samples))
 
 print("after integration")
+saveRDS(samples, file=paste(filepath,'outputs/scvi_samples.RDS',sep=""))
 
-#DefaultAssay(merge.immune) <- "integrated"
-### Visualization of integrated data ###
+samples <- FindNeighbors(samples, reduction="scvi", dims=1:30)
+samples <- FindClusters(samples, resolution=0.2)
+samples <- RunUMAP(samples, dims=1:30, reduction="scvi", n.components=2)
 
-#merge.immune <- integ.immune[[1]]
-#for (i in 2:length(integ.immune)){
-#  merge.immune <- merge(merge.immune, integ.immune[[i]])
-#}
-
-#merge.immune <- ScaleData(sample.list, verbose=FALSE)
-#merge.immune <- RunPCA(merge.immune, npcs=30, verbose=FALSE)
-#merge.immune <- RunUMAP(merge.immune, dims=1:30, reduction="pca")
-
-sample.list <- FindNeighbors(sample.list, reduction="scvi", dims=1:30)
-sample.list <- FindClusters(sample.list, resolution=0.2)
-sample.list <- RunUMAP(sample.list, dims=1:30, reduction="scvi", n.components=2)
-
-merge.immune <- sample.list
+merge.immune <- samples
 
 print("before dimplot")
 
