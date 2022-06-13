@@ -114,7 +114,7 @@ for (i in 1:length(sample.list)){
 print("default RNA")
 #saveRDS(sce.list, file=paste(filepath,'outputs/sample_list.RDS',sep=""))
 
-integ.features <- SelectIntegrationFeatures(object.list = sample.list, nfeatures=3000)
+integ.features <- SelectIntegrationFeatures(object.list = sample.list, nfeatures=2000)
 m.immune <- lapply(X=sample.list, FUN=function(x) {
 	x <- ScaleData(x, features=integ.features, verbose=FALSE)
 	x <- RunPCA(x, features=integ.features, verbose=FALSE, npcs=30)
@@ -133,7 +133,7 @@ DefaultAssay(merge.immune) <- "integrated"
 #  merge.immune <- merge(merge.immune, integ.immune[[i]])
 #}
 
-merge.immune <- ScaleData(merge.immune, verbose=FALSE)
+#merge.immune <- ScaleData(merge.immune, verbose=FALSE)
 merge.immune <- RunPCA(merge.immune, npcs=30, verbose=FALSE)
 merge.immune <- RunUMAP(merge.immune, dims=1:30, reduction="pca")
 

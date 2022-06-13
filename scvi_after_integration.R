@@ -45,6 +45,11 @@ FeaturePlot(merge.immune, features=c('CD3D', 'CD4', 'CD8A', 'CD44', 'CD68', 'ITG
 DimPlot(merge.immune,
         group.by='seurat_clusters', label=T)
 DimPlot(merge.immune, group.by='orig.ident')
+
+dev.off()
+
+pdf(file=paste(filepath,'outputs/immune_plots_scvi_split.pdf',sep=""),width=21, height=2)
+
 DimPlot(merge.immune, split.by='orig.ident')
 
 dev.off()

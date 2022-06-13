@@ -53,13 +53,13 @@ DimPlot(m.immune,
 ### Object -> list
 
 sample.list <- SplitObject(m.immune, split.by = "orig.ident")
-sce.list <- lapply(sample.list, as.SingleCellExperiment)
+#sce.list <- lapply(sample.list, as.SingleCellExperiment)
 #sce.list <- sample.list
 ### Re-normalization & Integration ###
 
 #sce.list <- sample.list
 
-for (i in 1:length(sce.list)) {
+for (i in 1:length(sample.list)) {
 #  clusters <- quickCluster(sce.list[[i]], min.size=40)
 #  sce.list[[i]] <- computeSumFactors(sce.list[[i]], clusters=clusters)
 #  summary(sizeFactors(sce.list[[i]]))
